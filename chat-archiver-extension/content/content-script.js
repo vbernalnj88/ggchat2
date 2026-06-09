@@ -15,16 +15,23 @@
 
     parseChatHistory(container) {
       const messages = [];
-      const messageRows = container.querySelectorAll('[id], [data-message-id]');
+      // Find all message rows by data-message-id attribute
+      const messageRows = container.querySelectorAll('[data-message-id]');
       
       let lastFullMessage = null;
 
       messageRows.forEach((row) => {
-        const messageId = row.id || row.getAttribute('data-message-id');
+        const messageId = row.getAttribute('data-message-id');
         if (!messageId) return;
 
-        const isContinuation = row.classList.contains('mt-1') || !row.querySelector('.profile-area');
-        const isTask = row.classList.contains('task-card') || row.querySelector('.task-container');
+        // Check for continuation: has mt-1 class OR lacks avatar button
+        const hasAvatar = row.querySelector('button[aria-label*="profile"]');
+        const isContinuation = row.classList.contains('mt-1') || !hasAvatar;
+        
+        // Check for task/question card
+        const isTask = row.querySelector('[class*="Question"]') || 
+                      row.querySelector('[class*="task-container"]') ||
+                      row.querySelector('.border-l-4.border-blue-500');
 
         let messageData = null;
 
@@ -48,38 +55,33 @@
     }
 
     parseFullMessage(row) {
-      const profileArea = row.querySelector('.profile-area');
-      const messageContent = row.querySelector('.message-content');
+      // Find username from truncate span
+      const usernameEl = row.querySelector('span.truncate');
+      const username = usernameEl ? usernameEl.textContent.trim() : '';
       
-      if (!messageContent) return null;
-
-      let username = '';
+      // Find avatar from img or div with initials
+      const avatarImg = row.querySelector('img[alt=""]');
+      const avatarInitialsDiv = row.querySelector('div.flex.h-8.w-8');
       let avatarUrl = '';
-
-      if (profileArea) {
-        const usernameEl = profileArea.querySelector('.username');
-        const avatarEl = profileArea.querySelector('.avatar, img[alt=""]');
-        
-        if (usernameEl) {
-          username = usernameEl.textContent.trim();
-        }
-        if (avatarEl) {
-          avatarUrl = avatarEl.src || avatarEl.getAttribute('src');
-        }
+      if (avatarImg) {
+        avatarUrl = avatarImg.src || avatarImg.getAttribute('src') || '';
+      } else if (avatarInitialsDiv) {
+        // Use initials as placeholder
+        avatarUrl = avatarInitialsDiv.textContent.trim();
       }
+      
+      // Find message content from p tag
+      const contentEl = row.querySelector('p.text-sm.text-gray-200');
+      const content = contentEl ? contentEl.textContent.trim() : '';
+      
+      // Find timestamp
+      const timestampEl = row.querySelector('span.tabular-nums');
+      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
 
-      if (!username) {
-        const userBadge = row.querySelector('.user-badge');
-        if (userBadge) {
-          username = userBadge.textContent.trim();
-        }
-      }
-
-      const content = this.extractMessageContent(messageContent);
-      const timestamp = this.extractTimestamp(row);
+      if (!username && !content) return null;
 
       return {
-        id: row.id || row.getAttribute('data-message-id'),
+        id: row.getAttribute('data-message-id'),
         type: 'message',
         author: username,
         avatar: avatarUrl,
@@ -91,14 +93,33 @@
     }
 
     parseContinuationMessage(row, lastFullMessage) {
-      const messageContent = row.querySelector('.message-content');
-      if (!messageContent) return null;
-
-      const content = this.extractMessageContent(messageContent);
-      const timestamp = this.extractTimestamp(row);
+      // Continuation messages have pl-10 div with nested content
+      const pl10Div = row.querySelector('.pl-10');
+      const contentDiv = pl10Div ? pl10Div.querySelector('div') || pl10Div : row;
+      
+      // Try to find content in various ways
+      let content = '';
+      const contentP = contentDiv.querySelector('p');
+      if (contentP) {
+        content = contentP.textContent.trim();
+      } else {
+        // Get text content excluding badge elements
+        const badgeEl = contentDiv.querySelector('[class*="Question"]');
+        if (badgeEl) {
+          // Extract content after the badge
+          const allText = contentDiv.textContent.trim();
+          const badgeText = badgeEl.textContent.trim();
+          content = allText.replace(badgeText, '').trim();
+        } else {
+          content = contentDiv.textContent.trim();
+        }
+      }
+      
+      const timestampEl = row.querySelector('span.tabular-nums');
+      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
 
       return {
-        id: row.id || row.getAttribute('data-message-id'),
+        id: row.getAttribute('data-message-id'),
         type: 'continuation',
         content: content,
         timestamp: timestamp,
@@ -109,69 +130,43 @@
     }
 
     parseTaskMessage(row) {
-      const taskContainer = row.querySelector('.task-container');
-      const profileArea = row.querySelector('.profile-area');
+      // Find author from the rounded pill badge or truncate span
+      const authorBadge = row.querySelector('span.max-w-\\[10rem\\]');
+      const usernameEl = row.querySelector('span.truncate');
+      const username = authorBadge ? authorBadge.textContent.trim() : (usernameEl ? usernameEl.textContent.trim() : '');
       
-      let username = '';
+      // Find avatar
+      const avatarImg = row.querySelector('img[alt=""]');
+      const avatarInitialsDiv = row.querySelector('div.flex.h-8.w-8');
       let avatarUrl = '';
-
-      if (profileArea) {
-        const usernameEl = profileArea.querySelector('.username');
-        const userBadge = profileArea.querySelector('.user-badge');
-        const avatarEl = profileArea.querySelector('.avatar');
-        
-        if (usernameEl) {
-          username = usernameEl.textContent.trim();
-        } else if (userBadge) {
-          username = userBadge.textContent.trim();
-        }
-        
-        if (avatarEl) {
-          avatarUrl = avatarEl.src || avatarEl.getAttribute('src');
-        }
+      if (avatarImg) {
+        avatarUrl = avatarImg.src || avatarImg.getAttribute('src') || '';
+      } else if (avatarInitialsDiv) {
+        avatarUrl = avatarInitialsDiv.textContent.trim();
       }
-
-      let title = '';
-      let body = '';
-
-      if (taskContainer) {
-        const titleEl = taskContainer.querySelector('h3');
-        if (titleEl) {
-          title = titleEl.textContent.trim();
-        }
-        
-        const bodyElements = taskContainer.querySelectorAll('p');
-        body = Array.from(bodyElements).map(el => el.textContent.trim()).join('\n');
-      }
-
-      const timestamp = this.extractTimestamp(row);
+      
+      // Find task/question title
+      const questionBadge = row.querySelector('[class*="Question"]');
+      const title = questionBadge ? 'Question' : 'Task';
+      
+      // Find task content - usually in a p tag after the badge section
+      const contentDiv = row.querySelector('.pl-10') || row;
+      const contentP = contentDiv.querySelector('p');
+      const content = contentP ? contentP.textContent.trim() : contentDiv.textContent.trim().replace(title, '').trim();
+      
+      const timestampEl = row.querySelector('span.tabular-nums');
+      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
 
       return {
-        id: row.id || row.getAttribute('data-message-id'),
+        id: row.getAttribute('data-message-id'),
         type: 'task',
         author: username,
         avatar: avatarUrl,
         title: title,
-        content: body,
+        content: content,
         timestamp: timestamp,
         rawHtml: row.outerHTML
       };
-    }
-
-    extractMessageContent(contentEl) {
-      const paragraphs = contentEl.querySelectorAll('p');
-      if (paragraphs.length > 0) {
-        return Array.from(paragraphs).map(p => p.textContent.trim()).join('\n');
-      }
-      return contentEl.textContent.trim();
-    }
-
-    extractTimestamp(row) {
-      const timeEl = row.querySelector('time, .timestamp, [class*="time"]');
-      if (timeEl) {
-        return timeEl.textContent.trim() || timeEl.getAttribute('datetime');
-      }
-      return new Date().toISOString();
     }
   }
 
@@ -181,25 +176,33 @@
 
   // Find the chat history container
   function findChatHistory() {
-    // Try various selectors based on the provided HTML structure
+    // Based on the provided HTML structure, look for the specific container
+    // The messages are inside: div.absolute.inset-0.overflow-x-hidden.overflow-y-auto.p-3
     const selectors = [
-      '[class*="chat-history"]',
+      'div.absolute.inset-0.overflow-x-hidden.overflow-y-auto.p-3',
+      '[class*="overflow-y-auto"]',
       '.chat-history',
       '[data-chat-overlay-control]',
-      '.flex.min-h-0.flex-1.flex-col',
       '[class*="chat"]'
     ];
 
     for (const selector of selectors) {
       const container = document.querySelector(selector);
       if (container) {
-        // Look for the actual message container within
-        const messageContainer = container.querySelector('[class*="flex-col"]') || 
-                                container.querySelector('[role="log"]') ||
-                                container.children[container.children.length - 1];
-        return messageContainer || container;
+        // Return the container that holds the message rows
+        // Messages are direct children with data-message-id
+        return container;
       }
     }
+    
+    // Fallback: look for any div containing elements with data-message-id
+    const allDivs = document.querySelectorAll('div');
+    for (const div of allDivs) {
+      if (div.querySelector('[data-message-id]')) {
+        return div;
+      }
+    }
+    
     return null;
   }
 
@@ -266,16 +269,29 @@
 
     try {
       const sessionId = parser.extractSessionId(window.location.href);
+      console.log('[Chat Archiver] Session ID:', sessionId);
+      
       if (!sessionId) {
         throw new Error('Could not extract session ID from URL');
       }
 
       const chatContainer = findChatHistory();
+      console.log('[Chat Archiver] Chat container found:', !!chatContainer);
+      
       if (!chatContainer) {
         throw new Error('Could not find chat history container');
       }
 
+      // Debug: count message elements
+      const allMessages = chatContainer.querySelectorAll('[data-message-id]');
+      console.log('[Chat Archiver] Found message elements:', allMessages.length);
+      
       const messages = parser.parseChatHistory(chatContainer);
+      console.log('[Chat Archiver] Parsed messages:', messages);
+      
+      if (messages.length === 0) {
+        console.warn('[Chat Archiver] No messages parsed! Check selectors.');
+      }
       
       // Send to background script for storage and server sync
       const response = await chrome.runtime.sendMessage({

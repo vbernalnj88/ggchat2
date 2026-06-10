@@ -166,12 +166,49 @@
         const lookedUpUsername = usernameLookup.get(username);
         if (lookedUpUsername) {
           atUsername = lookedUpUsername;
-          console.log('[Chat Archiver] Found @username from lookup:', username, '->', atUsername);
+          console.log('[Chat Archiver] Found @username from lookup:', username, '->', '@' + atUsername);
         }
       }
       
       // Use @username as the unique identifier if available, otherwise fall back to display username
       const uniqueAuthorId = atUsername || username;
+      
+      // Auto-inject @username badge if we found one via lookup and it's not already in the DOM
+      if (atUsername && username && contentArea) {
+        const messageHeaderDiv = contentArea.querySelector('div.mb-1.flex.flex-wrap.items-baseline');
+        if (messageHeaderDiv) {
+          const usernameButton = messageHeaderDiv.querySelector('button.text-left');
+          if (usernameButton) {
+            const usernameSpan = usernameButton.querySelector('span.truncate') || usernameButton.querySelector('span.inline-flex');
+            if (usernameSpan) {
+              const parentSpan = usernameSpan.parentElement;
+              const existingBadge = parentSpan?.nextElementSibling?.classList?.contains('lm-username-badge') ? 
+                                   parentSpan.nextElementSibling : null;
+              
+              if (!existingBadge) {
+                const badge = document.createElement('span');
+                badge.className = 'lm-username-badge';
+                badge.textContent = '@' + atUsername;
+                badge.style.cssText = `
+                  margin-left: 6px;
+                  padding: 2px 6px;
+                  background: rgba(168, 85, 247, 0.15);
+                  color: #d8b4fe;
+                  border-radius: 4px;
+                  font-size: 10px;
+                  font-weight: 600;
+                  letter-spacing: 0.02em;
+                  white-space: nowrap;
+                `;
+                
+                if (parentSpan) {
+                  parentSpan.insertAdjacentElement('afterend', badge);
+                }
+              }
+            }
+          }
+        }
+      }
       
       // Find avatar from img or div with initials
       const avatarImg = row.querySelector('img[alt=""]');
@@ -581,10 +618,70 @@
           if (!usernameLookup.has(displayName) || usernameLookup.get(displayName) !== atUsername) {
             usernameLookup.set(displayName, atUsername);
             console.log('[Chat Archiver] Learned username mapping:', displayName, '->', '@' + atUsername);
+            
+            // Update any existing messages with this display name to show the @username
+            updateMessagesWithUsername(displayName, atUsername);
           }
         }
       }
     }, PROFILE_MODAL_POLL_INTERVAL);
+  }
+  
+  // Update messages in the chat to show @username next to display name
+  function updateMessagesWithUsername(displayName, atUsername) {
+    // Find all message rows with this display name
+    const messageRows = document.querySelectorAll('[data-message-id]');
+    
+    messageRows.forEach((row) => {
+      // Check if this message has the matching display name
+      // Use the same selector logic as parseFullMessage to find the username
+      const contentArea = row.querySelector('div.min-w-0.flex-1');
+      let usernameEl = null;
+      
+      if (contentArea) {
+        const messageHeaderDiv = contentArea.querySelector('div.mb-1.flex.flex-wrap.items-baseline');
+        if (messageHeaderDiv) {
+          const usernameButton = messageHeaderDiv.querySelector('button.text-left');
+          if (usernameButton) {
+            usernameEl = usernameButton.querySelector('span.truncate') || usernameButton.querySelector('span.inline-flex');
+          }
+        }
+      }
+      
+      if (usernameEl && usernameEl.textContent.trim() === displayName) {
+        // Check if we already added the @username badge
+        const parentSpan = usernameEl.parentElement;
+        const existingBadge = parentSpan?.querySelector('.lm-username-badge') || 
+                             parentSpan?.nextElementSibling?.classList?.contains('lm-username-badge') ? 
+                             parentSpan.nextElementSibling : null;
+        
+        if (!existingBadge) {
+          // Create the @username badge
+          const badge = document.createElement('span');
+          badge.className = 'lm-username-badge';
+          badge.textContent = '@' + atUsername;
+          badge.style.cssText = `
+            margin-left: 6px;
+            padding: 2px 6px;
+            background: rgba(168, 85, 247, 0.15);
+            color: #d8b4fe;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+          `;
+          
+          // Insert after the display name span's parent inline-flex
+          if (parentSpan) {
+            parentSpan.insertAdjacentElement('afterend', badge);
+          }
+        } else {
+          // Update existing badge if username changed
+          existingBadge.textContent = '@' + atUsername;
+        }
+      }
+    });
   }
 
   // Stop profile modal polling

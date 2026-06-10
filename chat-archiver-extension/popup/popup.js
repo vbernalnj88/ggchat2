@@ -39,7 +39,7 @@ function switchView(viewName) {
   if (viewName === 'users') {
     loadUsers();
   } else if (viewName === 'sessions') {
-    showAllSessions();
+    showAllSessionsView();
   } else if (viewName === 'profile' || viewName === 'messages') {
     // These views are loaded programmatically, no action needed here
   }
@@ -92,61 +92,11 @@ async function loadUsers() {
   }
 }
 
-// Show all sessions
+// Show all sessions (deprecated - use showAllSessionsView instead)
 async function showAllSessions() {
-  document.getElementById('all-sessions').style.display = 'block';
-  document.getElementById('user-sessions').style.display = 'none';
-
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getUsers' });
-    
-    if (response.success) {
-      const sessionList = document.getElementById('session-list');
-      sessionList.innerHTML = '';
-
-      const sessionMap = new Map();
-      
-      // Group sessions by ID
-      response.users.forEach(user => {
-        user.sessions.forEach(session => {
-          if (!sessionMap.has(session.sessionId)) {
-            sessionMap.set(session.sessionId, {
-              sessionId: session.sessionId,
-              lastSynced: session.lastSynced,
-              messageCount: session.messageCount,
-              participants: []
-            });
-          }
-          if (!sessionMap.get(session.sessionId).participants.includes(user.username)) {
-            sessionMap.get(session.sessionId).participants.push(user.username);
-          }
-        });
-      });
-
-      if (sessionMap.size > 0) {
-        sessionMap.forEach((session, sessionId) => {
-          const li = document.createElement('li');
-          li.className = 'session-item';
-          li.innerHTML = `
-            <div class="session-title">Session: ${sessionId.substring(0, 8)}...</div>
-            <div class="session-meta">
-              ${session.participants.length} participant(s) • ${session.messageCount} messages
-            </div>
-            <div class="session-meta" style="margin-top: 4px;">
-              Participants: ${session.participants.slice(0, 5).join(', ')}${session.participants.length > 5 ? '...' : ''}
-            </div>
-          `;
-          li.addEventListener('click', () => showSessionMessages(sessionId));
-          sessionList.appendChild(li);
-        });
-      } else {
-        showEmptyState('session-list', 'No sessions found. Start syncing chats!');
-      }
-    }
-  } catch (error) {
-    console.error('Error loading sessions:', error);
-    showEmptyState('session-list', 'Error loading sessions');
-  }
+  // This function is deprecated, use showAllSessionsView instead
+  console.warn('showAllSessions is deprecated, use showAllSessionsView');
+  showAllSessionsView();
 }
 
 // Show sessions for a specific user
@@ -159,124 +109,131 @@ async function showUserSessions(username) {
       username: username 
     });
     
-    if (response.success && response.sessions.length > 0) {
-      document.getElementById('all-sessions').style.display = 'none';
-      document.getElementById('user-sessions').style.display = 'block';
-      document.getElementById('current-user').textContent = username;
+    if (!response.success) {
+      console.error('Failed to get user sessions:', response.error);
+      alert('Error loading sessions: ' + response.error);
+      return;
+    }
+    
+    if (response.sessions.length === 0) {
+      alert('No sessions found for this user');
+      return;
+    }
+    
+    document.getElementById('all-sessions').style.display = 'none';
+    document.getElementById('user-sessions').style.display = 'block';
+    document.getElementById('current-user').textContent = username;
 
-      const sessionList = document.getElementById('user-session-list');
-      sessionList.innerHTML = '';
+    const sessionList = document.getElementById('user-session-list');
+    sessionList.innerHTML = '';
 
-      response.sessions.forEach(session => {
-        const li = document.createElement('li');
-        li.className = 'session-item';
-        li.innerHTML = `
-          <div class="session-title">Session: ${session.sessionId.substring(0, 8)}...</div>
-          <div class="session-meta">
-            ${session.messageCount} messages • ${new Date(session.lastSynced).toLocaleDateString()}
-          </div>
-          <div class="session-meta" style="margin-top: 4px;">
-            ${session.participants.length} total participant(s)
-          </div>
-        `;
-        li.addEventListener('click', () => showSessionMessages(session.sessionId));
-        sessionList.appendChild(li);
+    response.sessions.forEach(session => {
+      const li = document.createElement('li');
+      li.className = 'session-item';
+      li.innerHTML = `
+        <div class="session-title">Session: ${session.sessionId.substring(0, 8)}...</div>
+        <div class="session-meta">
+          ${session.messageCount} messages • ${new Date(session.lastSynced).toLocaleDateString()}
+        </div>
+        <div class="session-meta" style="margin-top: 4px;">
+          ${session.participants.length} total participant(s)
+        </div>
+      `;
+      li.addEventListener('click', () => showSessionMessages(session.sessionId));
+      sessionList.appendChild(li);
+    });
+    
+    // Add user's messages section below sessions
+    const messagesSection = document.createElement('div');
+    messagesSection.style.marginTop = '20px';
+    messagesSection.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    messagesSection.style.paddingTop = '12px';
+    messagesSection.innerHTML = `<h4 style="font-size: 13px; color: #667eea; margin-bottom: 12px;">${username}'s Messages</h4>`;
+    
+    const messageContainer = document.createElement('div');
+    messageContainer.id = 'user-messages-container';
+    messageContainer.style.maxHeight = '300px';
+    messageContainer.style.overflowY = 'auto';
+    
+    // Get all messages from all sessions for this user
+    const allUserMessages = [];
+    for (const session of response.sessions) {
+      const sessionMsgs = await chrome.runtime.sendMessage({
+        action: 'getSessionMessages',
+        sessionId: session.sessionId
       });
       
-      // Add user's messages section below sessions
-      const messagesSection = document.createElement('div');
-      messagesSection.style.marginTop = '20px';
-      messagesSection.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-      messagesSection.style.paddingTop = '12px';
-      messagesSection.innerHTML = `<h4 style="font-size: 13px; color: #667eea; margin-bottom: 12px;">${username}'s Messages</h4>`;
-      
-      const messageContainer = document.createElement('div');
-      messageContainer.id = 'user-messages-container';
-      messageContainer.style.maxHeight = '300px';
-      messageContainer.style.overflowY = 'auto';
-      
-      // Get all messages from all sessions for this user
-      const allUserMessages = [];
-      for (const session of response.sessions) {
-        const sessionMsgs = await chrome.runtime.sendMessage({
-          action: 'getSessionMessages',
-          sessionId: session.sessionId
+      if (sessionMsgs.success && sessionMsgs.messages) {
+        const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
+        userMsgs.forEach(m => {
+          m._sessionId = session.sessionId; // Track which session
+          allUserMessages.push(m);
         });
-        
-        if (sessionMsgs.success && sessionMsgs.messages) {
-          const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
-          userMsgs.forEach(m => {
-            m._sessionId = session.sessionId; // Track which session
-            allUserMessages.push(m);
-          });
-        }
       }
-      
-      // Sort by timestamp
-      allUserMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      
-      if (allUserMessages.length > 0) {
-        // Group by session
-        const messagesBySession = new Map();
-        allUserMessages.forEach(msg => {
-          if (!messagesBySession.has(msg._sessionId)) {
-            messagesBySession.set(msg._sessionId, []);
-          }
-          messagesBySession.get(msg._sessionId).push(msg);
-        });
-        
-        messagesBySession.forEach((msgs, sessionId) => {
-          const sessionDiv = document.createElement('div');
-          sessionDiv.style.marginBottom = '16px';
-          sessionDiv.style.background = 'rgba(102, 126, 234, 0.1)';
-          sessionDiv.style.borderRadius = '6px';
-          sessionDiv.style.padding = '8px';
-          sessionDiv.style.cursor = 'pointer';
-          
-          const sessionHeader = document.createElement('div');
-          sessionHeader.style.fontSize = '11px';
-          sessionHeader.style.color = '#667eea';
-          sessionHeader.style.fontWeight = '600';
-          sessionHeader.style.marginBottom = '8px';
-          sessionHeader.textContent = `Session: ${sessionId.substring(0, 8)}... (${msgs.length} messages)`;
-          sessionHeader.title = 'Click to view full session';
-          sessionHeader.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showSessionMessages(sessionId);
-          });
-          
-          sessionDiv.appendChild(sessionHeader);
-          
-          msgs.forEach(msg => {
-            const msgDiv = document.createElement('div');
-            msgDiv.style.fontSize = '12px';
-            msgDiv.style.padding = '4px 0';
-            msgDiv.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-            msgDiv.style.color = '#d0d0d0';
-            msgDiv.textContent = msg.content || msg.body || '';
-            msgDiv.title = new Date(msg.timestamp).toLocaleString();
-            sessionDiv.appendChild(msgDiv);
-          });
-          
-          messageContainer.appendChild(sessionDiv);
-        });
-      } else {
-        messageContainer.innerHTML = '<div style="font-size: 12px; color: #666; padding: 12px;">No messages found</div>';
-      }
-      
-      messagesSection.appendChild(messageContainer);
-      document.getElementById('user-sessions').appendChild(messagesSection);
-    } else {
-      alert('No sessions found for this user');
     }
+    
+    // Sort by timestamp
+    allUserMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    if (allUserMessages.length > 0) {
+      // Group by session
+      const messagesBySession = new Map();
+      allUserMessages.forEach(msg => {
+        if (!messagesBySession.has(msg._sessionId)) {
+          messagesBySession.set(msg._sessionId, []);
+        }
+        messagesBySession.get(msg._sessionId).push(msg);
+      });
+      
+      messagesBySession.forEach((msgs, sessionId) => {
+        const sessionDiv = document.createElement('div');
+        sessionDiv.style.marginBottom = '16px';
+        sessionDiv.style.background = 'rgba(102, 126, 234, 0.1)';
+        sessionDiv.style.borderRadius = '6px';
+        sessionDiv.style.padding = '8px';
+        sessionDiv.style.cursor = 'pointer';
+        
+        const sessionHeader = document.createElement('div');
+        sessionHeader.style.fontSize = '11px';
+        sessionHeader.style.color = '#667eea';
+        sessionHeader.style.fontWeight = '600';
+        sessionHeader.style.marginBottom = '8px';
+        sessionHeader.textContent = `Session: ${sessionId.substring(0, 8)}... (${msgs.length} messages)`;
+        sessionHeader.title = 'Click to view full session';
+        sessionHeader.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showSessionMessages(sessionId);
+        });
+        
+        sessionDiv.appendChild(sessionHeader);
+        
+        msgs.forEach(msg => {
+          const msgDiv = document.createElement('div');
+          msgDiv.style.fontSize = '12px';
+          msgDiv.style.padding = '4px 0';
+          msgDiv.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+          msgDiv.style.color = '#d0d0d0';
+          msgDiv.textContent = msg.content || msg.body || '';
+          msgDiv.title = new Date(msg.timestamp).toLocaleString();
+          sessionDiv.appendChild(msgDiv);
+        });
+        
+        messageContainer.appendChild(sessionDiv);
+      });
+    } else {
+      messageContainer.innerHTML = '<div style="font-size: 12px; color: #666; padding: 12px;">No messages found</div>';
+    }
+    
+    messagesSection.appendChild(messageContainer);
+    document.getElementById('user-sessions').appendChild(messagesSection);
   } catch (error) {
     console.error('Error loading user sessions:', error);
-    alert('Error loading sessions');
+    alert('Error loading sessions: ' + error.message);
   }
 }
 
-// Show all sessions view
-function showAllSessions() {
+// Show all sessions view (called from HTML onclick)
+function showAllSessionsView() {
   document.getElementById('all-sessions').style.display = 'block';
   document.getElementById('user-sessions').style.display = 'none';
   // Remove any previously appended messages sections
@@ -290,52 +247,56 @@ async function loadAllSessionsList() {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getUsers' });
     
-    if (response.success) {
-      const sessionList = document.getElementById('session-list');
-      sessionList.innerHTML = '';
+    if (!response.success) {
+      console.error('Failed to get users:', response.error);
+      showEmptyState('session-list', 'Error loading sessions');
+      return;
+    }
+    
+    const sessionList = document.getElementById('session-list');
+    sessionList.innerHTML = '';
 
-      const sessionMap = new Map();
-      
-      // Group sessions by ID
-      response.users.forEach(user => {
-        user.sessions.forEach(session => {
-          if (!sessionMap.has(session.sessionId)) {
-            sessionMap.set(session.sessionId, {
-              sessionId: session.sessionId,
-              lastSynced: session.lastSynced,
-              messageCount: session.messageCount,
-              participants: []
-            });
-          }
-          if (!sessionMap.get(session.sessionId).participants.includes(user.username)) {
-            sessionMap.get(session.sessionId).participants.push(user.username);
-          }
-        });
+    const sessionMap = new Map();
+    
+    // Group sessions by ID
+    response.users.forEach(user => {
+      user.sessions.forEach(session => {
+        if (!sessionMap.has(session.sessionId)) {
+          sessionMap.set(session.sessionId, {
+            sessionId: session.sessionId,
+            lastSynced: session.lastSynced,
+            messageCount: session.messageCount,
+            participants: []
+          });
+        }
+        if (!sessionMap.get(session.sessionId).participants.includes(user.username)) {
+          sessionMap.get(session.sessionId).participants.push(user.username);
+        }
       });
+    });
 
-      if (sessionMap.size > 0) {
-        sessionMap.forEach((session, sessionId) => {
-          const li = document.createElement('li');
-          li.className = 'session-item';
-          li.innerHTML = `
-            <div class="session-title">Session: ${sessionId.substring(0, 8)}...</div>
-            <div class="session-meta">
-              ${session.participants.length} participant(s) • ${session.messageCount} messages
-            </div>
-            <div class="session-meta" style="margin-top: 4px;">
-              Participants: ${session.participants.slice(0, 5).join(', ')}${session.participants.length > 5 ? '...' : ''}
-            </div>
-          `;
-          li.addEventListener('click', () => showSessionMessages(sessionId));
-          sessionList.appendChild(li);
-        });
-      } else {
-        showEmptyState('session-list', 'No sessions found. Start syncing chats!');
-      }
+    if (sessionMap.size > 0) {
+      sessionMap.forEach((session, sessionId) => {
+        const li = document.createElement('li');
+        li.className = 'session-item';
+        li.innerHTML = `
+          <div class="session-title">Session: ${sessionId.substring(0, 8)}...</div>
+          <div class="session-meta">
+            ${session.participants.length} participant(s) • ${session.messageCount} messages
+          </div>
+          <div class="session-meta" style="margin-top: 4px;">
+            Participants: ${session.participants.slice(0, 5).join(', ')}${session.participants.length > 5 ? '...' : ''}
+          </div>
+        `;
+        li.addEventListener('click', () => showSessionMessages(sessionId));
+        sessionList.appendChild(li);
+      });
+    } else {
+      showEmptyState('session-list', 'No sessions found. Start syncing chats!');
     }
   } catch (error) {
     console.error('Error loading sessions:', error);
-    showEmptyState('session-list', 'Error loading sessions');
+    showEmptyState('session-list', 'Error loading sessions: ' + error.message);
   }
 }
 
@@ -477,7 +438,7 @@ function backToSessions() {
     document.getElementById('all-sessions').style.display = 'none';
     document.getElementById('user-sessions').style.display = 'block';
   } else {
-    showAllSessions();
+    showAllSessionsView();
   }
 }
 
@@ -646,7 +607,7 @@ function showEmptyState(elementId, message) {
 
 // Make functions globally available
 window.showUserSessions = showUserSessions;
-window.showAllSessions = showAllSessions;
+window.showAllSessionsView = showAllSessionsView;
 window.showSessionMessages = showSessionMessages;
 window.backToUsers = backToUsers;
 window.backToSessions = backToSessions;

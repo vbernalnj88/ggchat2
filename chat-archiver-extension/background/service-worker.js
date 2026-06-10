@@ -187,12 +187,12 @@ async function handleGetUsers() {
     }
     
     const users = Array.from(userSet).map(userId => ({
-      userId,  // Stable @username identifier
+      userId,  // Stable @username identifier (e.g., "@moodle")
       username: userDisplayNamesMap.get(userId) || userId,  // Display name (most recent alias or userId)
       sessions: userSessionsMap.get(userId) || []
     }));
     
-    return users;
+    return { success: true, users };
   } catch (error) {
     console.error('[Chat Archiver] Get users failed:', error);
     throw error;
@@ -221,7 +221,14 @@ async function handleGetUserSessions(username) {
       }
     }
     
-    return userSessions;
+    // Also fetch user info to include display name
+    const usersResponse = await handleGetUsers();
+    
+    return { 
+      success: true, 
+      sessions: userSessions,
+      users: usersResponse.users.filter(u => u.userId === username)
+    };
   } catch (error) {
     console.error('[Chat Archiver] Get user sessions failed:', error);
     throw error;
@@ -239,6 +246,7 @@ async function handleGetSessionMessages(sessionId) {
     }
     
     return {
+      success: true,
       sessionId: data.sessionId,
       url: data.url,
       lastSynced: data.lastSynced,
@@ -258,7 +266,7 @@ async function handleGetUserProfile(username) {
     const allProfiles = profiles.userProfiles || {};
     
     // Try to get profile by userId first, then by username
-    return allProfiles[username] || {
+    const profile = allProfiles[username] || {
       username,
       alias: '',
       tags: '',
@@ -266,6 +274,8 @@ async function handleGetUserProfile(username) {
       age: '',
       kinks: ''
     };
+    
+    return { success: true, profile };
   } catch (error) {
     console.error('[Chat Archiver] Get user profile failed:', error);
     throw error;
@@ -287,7 +297,7 @@ async function handleUpdateUserProfile(username, profileData) {
     
     await chrome.storage.local.set({ userProfiles: allProfiles });
     
-    return allProfiles[username];
+    return { success: true, profile: allProfiles[username] };
   } catch (error) {
     console.error('[Chat Archiver] Update user profile failed:', error);
     throw error;

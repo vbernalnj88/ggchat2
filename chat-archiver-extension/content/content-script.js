@@ -2,6 +2,16 @@
 (function() {
   'use strict';
 
+  // Username lookup map: displayName -> @username
+  const usernameLookup = new Map();
+  
+  // Polling interval for checking profile modal (in ms)
+  const PROFILE_MODAL_POLL_INTERVAL = 1000;
+  
+  // Track if polling is active
+  let profileModalPollingActive = false;
+  let profileModalPoller = null;
+
   // Import the parser (will be concatenated during build or loaded separately)
   class ChatMessageParser {
     constructor() {
@@ -148,6 +158,15 @@
             }
             parent = parent.parentElement;
           }
+        }
+      }
+      
+      // NEW: Try to get @username from our lookup map if we have the display name
+      if (!atUsername && username) {
+        const lookedUpUsername = usernameLookup.get(username);
+        if (lookedUpUsername) {
+          atUsername = lookedUpUsername;
+          console.log('[Chat Archiver] Found @username from lookup:', username, '->', atUsername);
         }
       }
       
@@ -497,9 +516,11 @@
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         setTimeout(createSyncButton, 1000);
+        startProfileModalPolling();
       });
     } else {
       setTimeout(createSyncButton, 1000);
+      startProfileModalPolling();
     }
 
     // Listen for messages from popup
@@ -517,6 +538,63 @@
       }
       return true;
     });
+  }
+
+  // Poll for profile modal and extract username mappings
+  function startProfileModalPolling() {
+    if (profileModalPollingActive) return;
+    
+    profileModalPollingActive = true;
+    console.log('[Chat Archiver] Starting profile modal polling...');
+    
+    profileModalPoller = setInterval(() => {
+      // Look for the profile modal div with data-multiplayer-profile-modal attribute
+      const profileModal = document.querySelector('div[data-multiplayer-profile-modal]');
+      
+      if (profileModal) {
+        // Extract display name from the heading
+        const displayNameEl = profileModal.querySelector('h3#mp-profile-heading span.truncate');
+        const displayName = displayNameEl ? displayNameEl.textContent.trim() : '';
+        
+        // Extract @username from the paragraph below the heading
+        const usernameEl = profileModal.querySelector('p.text-xs.text-gray-500');
+        let atUsername = '';
+        if (usernameEl) {
+          const usernameText = usernameEl.textContent.trim();
+          // Remove the @ symbol if present
+          atUsername = usernameText.replace(/^@/, '');
+        }
+        
+        // Also check for @username in the profile link href
+        if (!atUsername) {
+          const profileLink = profileModal.querySelector('a[href*="/profile/"]');
+          if (profileLink) {
+            const hrefMatch = profileLink.href.match(/\/profile\/([@\w-]+)/i);
+            if (hrefMatch) {
+              atUsername = hrefMatch[1].replace(/^@/, '');
+            }
+          }
+        }
+        
+        // Store the mapping if we have both values
+        if (displayName && atUsername) {
+          if (!usernameLookup.has(displayName) || usernameLookup.get(displayName) !== atUsername) {
+            usernameLookup.set(displayName, atUsername);
+            console.log('[Chat Archiver] Learned username mapping:', displayName, '->', '@' + atUsername);
+          }
+        }
+      }
+    }, PROFILE_MODAL_POLL_INTERVAL);
+  }
+
+  // Stop profile modal polling
+  function stopProfileModalPolling() {
+    if (profileModalPoller) {
+      clearInterval(profileModalPoller);
+      profileModalPoller = null;
+      profileModalPollingActive = false;
+      console.log('[Chat Archiver] Stopped profile modal polling');
+    }
   }
 
   init();

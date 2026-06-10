@@ -610,14 +610,23 @@ function parseImportedText(text, sessionId) {
 // Helper functions
 function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  // Don't escape if it's already plain text with emojis
+  // Just escape dangerous HTML characters but preserve emojis
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function formatTimestamp(timestamp) {
-  if (!timestamp) return '';
+  if (!timestamp) return 'No date';
   const date = new Date(timestamp);
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid timestamp:', timestamp);
+    return 'Invalid Date';
+  }
   return date.toLocaleString();
 }
 

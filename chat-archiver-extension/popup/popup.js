@@ -39,7 +39,10 @@ function switchView(viewName) {
   if (viewName === 'users') {
     loadUsers();
   } else if (viewName === 'sessions') {
-    showAllSessionsView();
+    // Only call showAllSessionsView if we're not already showing user sessions
+    if (!currentUser) {
+      showAllSessionsView();
+    }
   } else if (viewName === 'profile' || viewName === 'messages') {
     // These views are loaded programmatically, no action needed here
   }
@@ -103,6 +106,9 @@ async function showAllSessions() {
 async function showUserSessions(username) {
   currentUser = username;
   
+  // Switch to sessions view
+  switchView('sessions');
+
   try {
     const response = await chrome.runtime.sendMessage({ 
       action: 'getUserSessions', 
@@ -246,6 +252,8 @@ async function showUserSessions(username) {
 
 // Show all sessions view (called from HTML onclick)
 function showAllSessionsView() {
+  // Reset currentUser when showing all sessions
+  currentUser = null;
   document.getElementById('all-sessions').style.display = 'block';
   document.getElementById('user-sessions').style.display = 'none';
   // Remove any previously appended messages sections

@@ -70,13 +70,21 @@
         avatarUrl = avatarInitialsDiv.textContent.trim();
       }
       
-      // Find message content from p tag
+      // Find message content from p tag - use innerHTML to preserve emojis
       const contentEl = row.querySelector('p.text-sm.text-gray-200');
-      const content = contentEl ? contentEl.textContent.trim() : '';
+      const content = contentEl ? contentEl.innerHTML.trim() : '';
       
       // Find timestamp
       const timestampEl = row.querySelector('span.tabular-nums');
-      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
+      let timestamp;
+      if (timestampEl) {
+        const timestampText = timestampEl.textContent.trim();
+        // Try to parse the timestamp string into a valid ISO date
+        const parsedDate = new Date(timestampText);
+        timestamp = isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString();
+      } else {
+        timestamp = new Date().toISOString();
+      }
 
       if (!username && !content) return null;
 
@@ -149,13 +157,21 @@
       const questionBadge = row.querySelector('[class*="Question"]');
       const title = questionBadge ? 'Question' : 'Task';
       
-      // Find task content - usually in a p tag after the badge section
+      // Find task content - use innerHTML to preserve emojis
       const contentDiv = row.querySelector('.pl-10') || row;
       const contentP = contentDiv.querySelector('p');
-      const content = contentP ? contentP.textContent.trim() : contentDiv.textContent.trim().replace(title, '').trim();
+      const content = contentP ? contentP.innerHTML.trim() : contentDiv.textContent.trim().replace(title, '').trim();
       
       const timestampEl = row.querySelector('span.tabular-nums');
-      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
+      let timestamp;
+      if (timestampEl) {
+        const timestampText = timestampEl.textContent.trim();
+        // Try to parse the timestamp string into a valid ISO date
+        const parsedDate = new Date(timestampText);
+        timestamp = isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString();
+      } else {
+        timestamp = new Date().toISOString();
+      }
 
       return {
         id: row.getAttribute('data-message-id'),

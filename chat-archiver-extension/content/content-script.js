@@ -69,8 +69,21 @@
         // Look for the username button that's NOT inside a group/reply button
         const usernameButtons = contentArea.querySelectorAll('button.text-left');
         for (const btn of usernameButtons) {
-          // Skip if this button is inside a reply container
-          if (!btn.closest('.group\/reply')) {
+          // Skip if this button is inside a reply container - check by traversing up to find reply structure
+          let isReplyButton = false;
+          let parent = btn.parentElement;
+          while (parent && parent !== contentArea) {
+            if (parent.classList && parent.classList.contains('group/msg')) {
+              const replyBtn = parent.querySelector('button[aria-label="Reply"]');
+              if (replyBtn && replyBtn.contains(btn)) {
+                isReplyButton = true;
+                break;
+              }
+            }
+            parent = parent.parentElement;
+          }
+          
+          if (!isReplyButton) {
             usernameEl = btn.querySelector('span.truncate') || btn.querySelector('span.inline-flex');
             break;
           }

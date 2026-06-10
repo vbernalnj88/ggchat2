@@ -350,15 +350,32 @@ async function showSessionMessages(sessionId) {
     // Get user profiles for inline display
     const profiles = await loadUserProfiles(messages.map(m => m.author).filter(Boolean));
 
-    messages.forEach(msg => {
+    // Process messages to group continuations with their parent messages
+    const processedMessages = [];
+    let lastMessage = null;
+    
+    for (const msg of messages) {
+      if (msg.type === 'continuation' && lastMessage) {
+        // Append continuation content to the last message
+        lastMessage.content = (lastMessage.content || '') + '\n' + (msg.content || msg.body || '');
+        // Update timestamp if continuation is newer
+        if (new Date(msg.timestamp) > new Date(lastMessage.timestamp)) {
+          lastMessage.timestamp = msg.timestamp;
+        }
+      } else {
+        // Regular message, add to processed list
+        processedMessages.push(msg);
+        lastMessage = msg;
+      }
+    }
+
+    processedMessages.forEach(msg => {
       const div = document.createElement('div');
       div.className = 'message-item';
       
       let typeBadge = '';
       if (msg.type === 'task') {
         typeBadge = '<span class="message-type-badge badge-task">Task</span>';
-      } else if (msg.type === 'continuation') {
-        typeBadge = '<span class="message-type-badge badge-continuation">Continuation</span>';
       }
 
       const authorDisplay = msg.author || 'Unknown';
@@ -379,7 +396,7 @@ async function showSessionMessages(sessionId) {
           </span>
           <span class="message-timestamp">${formatTimestamp(msg.timestamp)}</span>
         </div>
-        <div class="message-content">${escapeHtml(msg.content || msg.body || '')}</div>
+        <div class="message-content" style="white-space: pre-wrap;">${escapeHtml(msg.content || msg.body || '')}</div>
       `;
 
       // Add click handler for username

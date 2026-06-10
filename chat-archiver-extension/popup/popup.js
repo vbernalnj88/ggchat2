@@ -355,7 +355,8 @@ async function showSessionMessages(sessionId) {
     let lastMessage = null;
     
     for (const msg of messages) {
-      if (msg.type === 'continuation' && lastMessage) {
+      // Treat both 'continuation' and 'task-continuation' types as continuations
+      if ((msg.type === 'continuation' || msg.type === 'task-continuation') && lastMessage) {
         // Append continuation content to the last message
         lastMessage.content = (lastMessage.content || '') + '\n' + (msg.content || msg.body || '');
         // Update timestamp if continuation is newer

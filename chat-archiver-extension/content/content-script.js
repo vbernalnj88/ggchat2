@@ -28,15 +28,19 @@
         const hasAvatar = row.querySelector('button[aria-label*="profile"]');
         const isContinuation = row.classList.contains('mt-1') || !hasAvatar;
         
-        // Check for task/question card
+        // Check for task/question card - treat as continuation if no real author
         const isTask = row.querySelector('[class*="Question"]') || 
                       row.querySelector('[class*="task-container"]') ||
                       row.querySelector('.border-l-4.border-blue-500');
+        
+        // If it's a task but has no real author (no avatar), treat as continuation
+        const isTaskWithoutAuthor = isTask && !hasAvatar;
 
         let messageData = null;
 
-        if (isTask) {
-          messageData = this.parseTaskMessage(row);
+        if (isTaskWithoutAuthor) {
+          // Treat task without author as a continuation of the last message
+          messageData = this.parseContinuationMessage(row, lastFullMessage, true);
         } else if (isContinuation) {
           messageData = this.parseContinuationMessage(row, lastFullMessage);
         } else {
@@ -100,7 +104,7 @@
       };
     }
 
-    parseContinuationMessage(row, lastFullMessage) {
+    parseContinuationMessage(row, lastFullMessage, isTask = false) {
       // Continuation messages have pl-10 div with nested content
       const pl10Div = row.querySelector('.pl-10');
       const contentDiv = pl10Div ? pl10Div.querySelector('div') || pl10Div : row;
@@ -109,26 +113,38 @@
       let content = '';
       const contentP = contentDiv.querySelector('p');
       if (contentP) {
-        content = contentP.textContent.trim();
+        content = contentP.innerHTML.trim(); // Use innerHTML to preserve emojis
       } else {
         // Get text content excluding badge elements
         const badgeEl = contentDiv.querySelector('[class*="Question"]');
         if (badgeEl) {
-          // Extract content after the badge
-          const allText = contentDiv.textContent.trim();
-          const badgeText = badgeEl.textContent.trim();
-          content = allText.replace(badgeText, '').trim();
+          // Extract content after the badge - use innerHTML for emojis
+          const allText = contentDiv.innerHTML;
+          const badgeHtml = badgeEl.outerHTML;
+          // Remove the badge HTML and get remaining content
+          content = allText.replace(badgeHtml, '').trim();
+          // Strip any remaining HTML tags but keep emoji entities
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = content;
+          content = tempDiv.textContent || tempDiv.innerText || '';
         } else {
           content = contentDiv.textContent.trim();
         }
       }
       
       const timestampEl = row.querySelector('span.tabular-nums');
-      const timestamp = timestampEl ? timestampEl.textContent.trim() : new Date().toISOString();
+      let timestamp;
+      if (timestampEl) {
+        const timestampText = timestampEl.textContent.trim();
+        const parsedDate = new Date(timestampText);
+        timestamp = isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString();
+      } else {
+        timestamp = new Date().toISOString();
+      }
 
       return {
         id: row.getAttribute('data-message-id'),
-        type: 'continuation',
+        type: isTask ? 'task-continuation' : 'continuation',
         content: content,
         timestamp: timestamp,
         rawHtml: row.outerHTML,

@@ -60,10 +60,17 @@ async function loadUsers() {
       response.users.forEach(user => {
         const li = document.createElement('li');
         li.className = 'user-item';
+        
+        // Check if userId is different from username (i.e., we have a @username)
+        const hasAtUsername = user.userId && user.userId !== user.username && user.userId.startsWith('@');
+        const displayName = user.username || user.userId;
+        const atUsername = hasAtUsername ? user.userId : null;
+        
         li.innerHTML = `
           <div class="user-name">
-            ${escapeHtml(user.username)}
-            <span class="profile-field" title="Click to edit profile" data-edit-profile="${escapeHtml(user.username)}">✏️</span>
+            ${escapeHtml(displayName)}
+            ${atUsername ? `<span class="profile-field" title="@username">@${escapeHtml(atUsername.substring(1))}</span>` : ''}
+            <span class="profile-field" title="Click to edit profile" data-edit-profile="${escapeHtml(user.userId)}">✏️</span>
           </div>
           <div class="user-meta">${user.sessions.length} session(s)</div>
         `;
@@ -71,7 +78,7 @@ async function loadUsers() {
         li.addEventListener('click', (e) => {
           // Don't trigger if clicking the edit button
           if (!e.target.hasAttribute('data-edit-profile')) {
-            showUserSessions(user.username);
+            showUserSessions(user.userId);
           }
         });
         
@@ -80,7 +87,7 @@ async function loadUsers() {
         if (editBtn) {
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openUserProfile(user.username);
+            openUserProfile(user.userId);
           });
         }
         
@@ -102,9 +109,9 @@ async function showAllSessions() {
   showAllSessionsView();
 }
 
-// Show sessions for a specific user
-async function showUserSessions(username) {
-  currentUser = username;
+// Show sessions for a specific user (accepts userId which is the stable @username)
+async function showUserSessions(userId) {
+  currentUser = userId;
   
   // Switch to sessions view
   switchView('sessions');
@@ -112,7 +119,7 @@ async function showUserSessions(username) {
   try {
     const response = await chrome.runtime.sendMessage({ 
       action: 'getUserSessions', 
-      username: username 
+      username: userId 
     });
     
     if (!response.success) {
@@ -129,7 +136,7 @@ async function showUserSessions(username) {
     // Clear previous content first
     document.getElementById('all-sessions').style.display = 'none';
     document.getElementById('user-sessions').style.display = 'block';
-    document.getElementById('current-user').textContent = username;
+    document.getElementById('current-user').textContent = userId;
 
     const sessionList = document.getElementById('user-session-list');
     sessionList.innerHTML = '';
@@ -159,7 +166,7 @@ async function showUserSessions(username) {
     messagesSection.style.marginTop = '20px';
     messagesSection.style.borderTop = '1px solid rgba(255,255,255,0.1)';
     messagesSection.style.paddingTop = '12px';
-    messagesSection.innerHTML = `<h4 style="font-size: 13px; color: #667eea; margin-bottom: 12px;">${username}'s Messages</h4>`;
+    messagesSection.innerHTML = `<h4 style="font-size: 13px; color: #667eea; margin-bottom: 12px;">${userId}'s Messages</h4>`;
     
     const messageContainer = document.createElement('div');
     messageContainer.id = 'user-messages-container';
@@ -179,7 +186,8 @@ async function showUserSessions(username) {
         });
         
         if (sessionMsgs.success && Array.isArray(sessionMsgs.messages)) {
-          const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
+          // Filter by authorId (stable @username) first, then fallback to author (display name)
+          const userMsgs = sessionMsgs.messages.filter(m => m.authorId === userId || m.author === userId);
           userMsgs.forEach(m => {
             m._sessionId = session.sessionId; // Track which session
             allUserMessages.push(m);
@@ -289,8 +297,9 @@ async function loadAllSessionsList() {
             participants: []
           });
         }
-        if (!sessionMap.get(session.sessionId).participants.includes(user.username)) {
-          sessionMap.get(session.sessionId).participants.push(user.username);
+        // Use userId (stable @username) for participant tracking
+        if (!sessionMap.get(session.sessionId).participants.includes(user.userId)) {
+          sessionMap.get(session.sessionId).participants.push(user.userId);
         }
       });
     });

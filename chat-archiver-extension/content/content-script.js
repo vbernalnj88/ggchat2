@@ -59,8 +59,29 @@
     }
 
     parseFullMessage(row) {
-      // Find username from truncate span
-      const usernameEl = row.querySelector('span.truncate');
+      // Find the main content area (the div after the avatar button)
+      const contentArea = row.querySelector('div.min-w-0.flex-1');
+      
+      // Find username from the button in the flex wrapper, NOT from the reply mention
+      // The real username is in a button with text-left class, not in the group/reply button
+      let usernameEl = null;
+      if (contentArea) {
+        // Look for the username button that's NOT inside a group/reply button
+        const usernameButtons = contentArea.querySelectorAll('button.text-left');
+        for (const btn of usernameButtons) {
+          // Skip if this button is inside a reply container
+          if (!btn.closest('.group\/reply')) {
+            usernameEl = btn.querySelector('span.truncate') || btn.querySelector('span.inline-flex');
+            break;
+          }
+        }
+      }
+      
+      // Fallback to direct truncate span if no button found
+      if (!usernameEl && contentArea) {
+        usernameEl = contentArea.querySelector(':scope > div.mb-1 > button.text-left span.truncate');
+      }
+      
       const username = usernameEl ? usernameEl.textContent.trim() : '';
       
       // Find avatar from img or div with initials

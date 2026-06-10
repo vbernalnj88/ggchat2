@@ -120,12 +120,17 @@ async function showUserSessions(username) {
       return;
     }
     
+    // Clear previous content first
     document.getElementById('all-sessions').style.display = 'none';
     document.getElementById('user-sessions').style.display = 'block';
     document.getElementById('current-user').textContent = username;
 
     const sessionList = document.getElementById('user-session-list');
     sessionList.innerHTML = '';
+
+    // Remove any previously appended messages sections
+    const existingMsgSections = document.querySelectorAll('#user-sessions > div[style*="margin-top"]');
+    existingMsgSections.forEach(el => el.remove());
 
     response.sessions.forEach(session => {
       const li = document.createElement('li');
@@ -154,26 +159,36 @@ async function showUserSessions(username) {
     messageContainer.id = 'user-messages-container';
     messageContainer.style.maxHeight = '300px';
     messageContainer.style.overflowY = 'auto';
+    messageContainer.innerHTML = '<div style="font-size: 12px; color: #666; padding: 12px;">Loading messages...</div>';
+    messagesSection.appendChild(messageContainer);
+    document.getElementById('user-sessions').appendChild(messagesSection);
     
     // Get all messages from all sessions for this user
     const allUserMessages = [];
     for (const session of response.sessions) {
-      const sessionMsgs = await chrome.runtime.sendMessage({
-        action: 'getSessionMessages',
-        sessionId: session.sessionId
-      });
-      
-      if (sessionMsgs.success && Array.isArray(sessionMsgs.messages)) {
-        const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
-        userMsgs.forEach(m => {
-          m._sessionId = session.sessionId; // Track which session
-          allUserMessages.push(m);
+      try {
+        const sessionMsgs = await chrome.runtime.sendMessage({
+          action: 'getSessionMessages',
+          sessionId: session.sessionId
         });
+        
+        if (sessionMsgs.success && Array.isArray(sessionMsgs.messages)) {
+          const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
+          userMsgs.forEach(m => {
+            m._sessionId = session.sessionId; // Track which session
+            allUserMessages.push(m);
+          });
+        }
+      } catch (err) {
+        console.error(`Error loading messages for session ${session.sessionId}:`, err);
       }
     }
     
     // Sort by timestamp
     allUserMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    // Update message container
+    messageContainer.innerHTML = '';
     
     if (allUserMessages.length > 0) {
       // Group by session
@@ -223,9 +238,6 @@ async function showUserSessions(username) {
     } else {
       messageContainer.innerHTML = '<div style="font-size: 12px; color: #666; padding: 12px;">No messages found</div>';
     }
-    
-    messagesSection.appendChild(messageContainer);
-    document.getElementById('user-sessions').appendChild(messagesSection);
   } catch (error) {
     console.error('Error loading user sessions:', error);
     alert('Error loading sessions: ' + error.message);

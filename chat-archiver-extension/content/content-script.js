@@ -66,6 +66,7 @@
       // The real username is in a button with text-left class that's a direct child of the mb-1 flex div
       // NOT inside a group/reply button
       let usernameEl = null;
+      let usernameButton = null;
       if (contentArea) {
         // Look for the mb-1 flex container that holds the real username
         // This is the div that contains the actual message author's name and timestamp
@@ -112,6 +113,46 @@
       }
       
       const username = usernameEl ? usernameEl.textContent.trim() : '';
+      
+      // Extract the permanent @username from the button or its parent link
+      // This is the stable identifier that doesn't change when users change their display name
+      let atUsername = '';
+      if (usernameButton) {
+        // Check if button has data-at-username or similar attribute
+        atUsername = usernameButton.getAttribute('data-at-username') || 
+                     usernameButton.getAttribute('data-username') ||
+                     usernameButton.getAttribute('aria-label')?.match(/@([\w-]+)/)?.[1] || '';
+        
+        // If not on button, check if button is wrapped in an anchor tag with @username in href
+        if (!atUsername) {
+          const parentLink = usernameButton.closest('a[href]');
+          if (parentLink) {
+            const hrefMatch = parentLink.href.match(/@([\w-]+)/i);
+            if (hrefMatch) {
+              atUsername = hrefMatch[1];
+            }
+          }
+        }
+        
+        // If still not found, check for @username in any parent element's attributes
+        if (!atUsername) {
+          let parent = usernameButton.parentElement;
+          while (parent && parent !== contentArea) {
+            const hrefAttr = parent.getAttribute('href');
+            if (hrefAttr) {
+              const hrefMatch = hrefAttr.match(/@([\w-]+)/i);
+              if (hrefMatch) {
+                atUsername = hrefMatch[1];
+                break;
+              }
+            }
+            parent = parent.parentElement;
+          }
+        }
+      }
+      
+      // Use @username as the unique identifier if available, otherwise fall back to display username
+      const uniqueAuthorId = atUsername || username;
       
       // Find avatar from img or div with initials
       const avatarImg = row.querySelector('img[alt=""]');
@@ -163,6 +204,8 @@
         id: row.getAttribute('data-message-id'),
         type: 'message',
         author: username,
+        authorId: uniqueAuthorId,  // Stable identifier that doesn't change with display name
+        atUsername: atUsername || null,  // The @username if found
         avatar: avatarUrl,
         content: content,
         timestamp: timestamp,

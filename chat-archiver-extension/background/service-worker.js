@@ -62,21 +62,42 @@ async function handleSyncChat(data) {
     const storageKey = `session_${sessionId}`;
     const existingData = await chrome.storage.local.get([storageKey]);
     
-    const storedMessages = existingData[storageKey] || { messages: [], users: new Set() };
+    const storedMessages = existingData[storageKey] || { messages: [], users: new Set(), userAliases: {} };
     
-    // Merge messages and track unique users
+    // Merge messages and track unique users by their stable authorId (@username)
     const allMessages = [...storedMessages.messages];
     const userSet = new Set(storedMessages.users || []);
+    const userAliases = storedMessages.userAliases || {};  // Maps authorId -> display names
     
     messages.forEach(msg => {
       // Check if message already exists
       const exists = allMessages.some(m => m.id === msg.id);
       if (!exists) {
         allMessages.push(msg);
-        if (msg.author) {
+        
+        // Use authorId (stable @username) if available, otherwise fall back to author (display name)
+        const userId = msg.authorId || msg.author;
+        if (userId) {
+          userSet.add(userId);
+          
+          // Track the mapping between authorId and display name
+          if (msg.authorId && msg.author) {
+            if (!userAliases[msg.authorId]) {
+              userAliases[msg.authorId] = new Set();
+            }
+            userAliases[msg.authorId].add(msg.author);
+          }
+        } else if (msg.author) {
+          // Fallback for messages without authorId
           userSet.add(msg.author);
         }
       }
+    });
+    
+    // Convert Sets to Arrays for storage
+    const serializedUserAliases = {};
+    Object.keys(userAliases).forEach(key => {
+      serializedUserAliases[key] = Array.from(userAliases[key]);
     });
     
     const sessionData = {
@@ -84,7 +105,8 @@ async function handleSyncChat(data) {
       url,
       lastSynced: timestamp,
       messages: allMessages,
-      users: Array.from(userSet)
+      users: Array.from(userSet),
+      userAliases: serializedUserAliases
     };
     
     await chrome.storage.local.set({ [storageKey]: sessionData });
@@ -136,29 +158,38 @@ async function handleGetUsers() {
     
     const userSet = new Set();
     const userSessionsMap = new Map();
+    const userDisplayNamesMap = new Map();  // Maps authorId to most recent display name
     
     for (const sessionId of sessionsList) {
       const sessionData = await chrome.storage.local.get([`session_${sessionId}`]);
       const data = sessionData[`session_${sessionId}`];
       
       if (data && data.users) {
-        data.users.forEach(username => {
-          userSet.add(username);
-          if (!userSessionsMap.has(username)) {
-            userSessionsMap.set(username, []);
+        data.users.forEach(userId => {
+          userSet.add(userId);
+          if (!userSessionsMap.has(userId)) {
+            userSessionsMap.set(userId, []);
           }
-          userSessionsMap.get(username).push({
+          userSessionsMap.get(userId).push({
             sessionId,
             lastSynced: data.lastSynced,
             messageCount: data.messages?.length || 0
           });
+          
+          // Track display names from userAliases
+          if (data.userAliases && data.userAliases[userId]) {
+            const aliases = data.userAliases[userId];
+            // Use the most recent alias as the display name
+            userDisplayNamesMap.set(userId, aliases[aliases.length - 1]);
+          }
         });
       }
     }
     
-    const users = Array.from(userSet).map(username => ({
-      username,
-      sessions: userSessionsMap.get(username) || []
+    const users = Array.from(userSet).map(userId => ({
+      userId,  // Stable @username identifier
+      username: userDisplayNamesMap.get(userId) || userId,  // Display name (most recent alias or userId)
+      sessions: userSessionsMap.get(userId) || []
     }));
     
     return users;
@@ -168,7 +199,7 @@ async function handleGetUsers() {
   }
 }
 
-// Get sessions for a specific user
+// Get sessions for a specific user (by userId or username)
 async function handleGetUserSessions(username) {
   try {
     const allSessions = await chrome.storage.local.get(['allSessions']);
@@ -220,12 +251,13 @@ async function handleGetSessionMessages(sessionId) {
   }
 }
 
-// Get user profile
+// Get user profile (now accepts userId or username)
 async function handleGetUserProfile(username) {
   try {
     const profiles = await chrome.storage.local.get(['userProfiles']);
     const allProfiles = profiles.userProfiles || {};
     
+    // Try to get profile by userId first, then by username
     return allProfiles[username] || {
       username,
       alias: '',
@@ -240,12 +272,13 @@ async function handleGetUserProfile(username) {
   }
 }
 
-// Update user profile
+// Update user profile (now uses userId as key)
 async function handleUpdateUserProfile(username, profileData) {
   try {
     const profiles = await chrome.storage.local.get(['userProfiles']);
     const allProfiles = profiles.userProfiles || {};
     
+    // Use the provided username (which should be the stable userId) as the key
     allProfiles[username] = {
       ...allProfiles[username],
       username,
@@ -274,19 +307,39 @@ async function handleImportChatData(data) {
     const storageKey = `session_${sessionId}`;
     const existingData = await chrome.storage.local.get([storageKey]);
     
-    const storedMessages = existingData[storageKey] || { messages: [], users: new Set() };
+    const storedMessages = existingData[storageKey] || { messages: [], users: new Set(), userAliases: {} };
     
     const allMessages = [...storedMessages.messages];
     const userSet = new Set(storedMessages.users || []);
+    const userAliases = storedMessages.userAliases || {};
     
     messages.forEach(msg => {
       const exists = allMessages.some(m => m.id === msg.id);
       if (!exists) {
         allMessages.push(msg);
-        if (msg.author) {
+        
+        // Use authorId (stable @username) if available, otherwise fall back to author
+        const userId = msg.authorId || msg.author;
+        if (userId) {
+          userSet.add(userId);
+          
+          // Track the mapping between authorId and display name
+          if (msg.authorId && msg.author) {
+            if (!userAliases[msg.authorId]) {
+              userAliases[msg.authorId] = new Set();
+            }
+            userAliases[msg.authorId].add(msg.author);
+          }
+        } else if (msg.author) {
           userSet.add(msg.author);
         }
       }
+    });
+    
+    // Convert Sets to Arrays for storage
+    const serializedUserAliases = {};
+    Object.keys(userAliases).forEach(key => {
+      serializedUserAliases[key] = Array.from(userAliases[key]);
     });
     
     const sessionData = {
@@ -294,7 +347,8 @@ async function handleImportChatData(data) {
       url: `manual-import-${sessionId}`,
       lastSynced: new Date().toISOString(),
       messages: allMessages,
-      users: Array.from(userSet)
+      users: Array.from(userSet),
+      userAliases: serializedUserAliases
     };
     
     await chrome.storage.local.set({ [storageKey]: sessionData });

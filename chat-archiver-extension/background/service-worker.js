@@ -26,7 +26,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.action === 'getSessionMessages') {
     handleGetSessionMessages(request.sessionId)
-      .then(messages => sendResponse({ success: true, messages }))
+      .then(sessionData => sendResponse({ success: true, messages: sessionData.messages }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }

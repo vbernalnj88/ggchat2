@@ -61,15 +61,14 @@ async function loadUsers() {
         const li = document.createElement('li');
         li.className = 'user-item';
         
-        // Check if userId is different from username (i.e., we have a @username)
-        const hasAtUsername = user.userId && user.userId !== user.username && user.userId.startsWith('@');
+        // userId is the stable @username (e.g., "@moodle"), username is the display name (e.g., "moodle")
         const displayName = user.username || user.userId;
-        const atUsername = hasAtUsername ? user.userId : null;
+        const atUsername = user.userId && user.userId.startsWith('@') ? user.userId : null;
         
         li.innerHTML = `
           <div class="user-name">
             ${escapeHtml(displayName)}
-            ${atUsername ? `<span class="profile-field" title="@username">@${escapeHtml(atUsername.substring(1))}</span>` : ''}
+            ${atUsername && !displayName.startsWith('@') ? `<span class="profile-field" title="@username">@${escapeHtml(atUsername.substring(1))}</span>` : ''}
             <span class="profile-field" title="Click to edit profile" data-edit-profile="${escapeHtml(user.userId)}">✏️</span>
           </div>
           <div class="user-meta">${user.sessions.length} session(s)</div>
@@ -136,7 +135,17 @@ async function showUserSessions(userId) {
     // Clear previous content first
     document.getElementById('all-sessions').style.display = 'none';
     document.getElementById('user-sessions').style.display = 'block';
-    document.getElementById('current-user').textContent = userId;
+    
+    // Get user's display name and @username for the header
+    const userObj = response.users && response.users.length > 0 ? response.users[0] : null;
+    const displayName = userObj ? userObj.username : userId;
+    const atUsername = userId && userId.startsWith('@') ? userId : null;
+    
+    let userHeaderHtml = escapeHtml(displayName);
+    if (atUsername && !displayName.startsWith('@')) {
+      userHeaderHtml += ` <span class="profile-field" style="font-size:9px;padding:1px 4px;">@${escapeHtml(atUsername.substring(1))}</span>`;
+    }
+    document.getElementById('current-user').innerHTML = userHeaderHtml;
 
     const sessionList = document.getElementById('user-session-list');
     sessionList.innerHTML = '';
@@ -308,13 +317,27 @@ async function loadAllSessionsList() {
       sessionMap.forEach((session, sessionId) => {
         const li = document.createElement('li');
         li.className = 'session-item';
+        
+        // Format participants to show display name with @username badge
+        const participantHtml = session.participants.map(pId => {
+          // Find the user's display name from the response
+          const user = response.users.find(u => u.userId === pId);
+          const displayName = user ? user.username : pId;
+          const atUsername = pId && pId.startsWith('@') ? pId : null;
+          
+          if (atUsername && !displayName.startsWith('@')) {
+            return `${escapeHtml(displayName)} <span class="profile-field" style="font-size:9px;padding:1px 4px;">@${escapeHtml(atUsername.substring(1))}</span>`;
+          }
+          return escapeHtml(displayName);
+        }).join(', ');
+        
         li.innerHTML = `
           <div class="session-title">Session: ${sessionId.substring(0, 8)}...</div>
           <div class="session-meta">
             ${session.participants.length} participant(s) • ${session.messageCount} messages
           </div>
           <div class="session-meta" style="margin-top: 4px;">
-            Participants: ${session.participants.slice(0, 5).join(', ')}${session.participants.length > 5 ? '...' : ''}
+            Participants: ${participantHtml}${session.participants.length > 5 ? '...' : ''}
           </div>
         `;
         li.addEventListener('click', () => showSessionMessages(sessionId));
@@ -389,7 +412,8 @@ async function showSessionMessages(sessionId) {
       }
 
       const authorDisplay = msg.author || 'Unknown';
-      const profile = profiles[msg.author] || {};
+      const authorId = msg.authorId;
+      const profile = profiles[authorDisplay] || {};
       const inlineInfo = [];
       
       if (profile.age) inlineInfo.push(profile.age);
@@ -398,11 +422,16 @@ async function showSessionMessages(sessionId) {
       const inlineHtml = inlineInfo.length > 0 
         ? `<span class="profile-field">${inlineInfo.join(' • ')}</span>` 
         : '';
+      
+      // Show username (authorId) next to display name if available and different
+      const usernameHtml = (authorId && authorId !== authorDisplay && authorId.startsWith('@'))
+        ? `<span class="profile-field" title="@username">@${escapeHtml(authorId.substring(1))}</span>`
+        : '';
 
       div.innerHTML = `
         <div class="message-header">
           <span class="message-author" data-username="${escapeHtml(authorDisplay)}">
-            ${escapeHtml(authorDisplay)}${inlineHtml}${typeBadge}
+            ${escapeHtml(authorDisplay)}${usernameHtml}${inlineHtml}${typeBadge}
           </span>
           <span class="message-timestamp">${formatTimestamp(msg.timestamp)}</span>
         </div>

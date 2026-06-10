@@ -109,8 +109,25 @@
       }
       
       // Find message content from p tag - use innerHTML to preserve emojis
+      // But first check if this message is inside a reply button (task mention)
       const contentEl = row.querySelector('p.text-sm.text-gray-200');
-      const content = contentEl ? contentEl.innerHTML.trim() : '';
+      let content = '';
+      if (contentEl) {
+        // Check if this content element is inside a group/reply button (task/user mention)
+        let isInsideReplyMention = false;
+        let parent = contentEl.parentElement;
+        while (parent && parent !== contentArea) {
+          if (parent.classList && parent.classList.contains('group/reply')) {
+            isInsideReplyMention = true;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+        
+        if (!isInsideReplyMention) {
+          content = contentEl.innerHTML.trim();
+        }
+      }
       
       // Find timestamp
       const timestampEl = row.querySelector('span.tabular-nums');

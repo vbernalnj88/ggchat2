@@ -63,29 +63,45 @@
       const contentArea = row.querySelector('div.min-w-0.flex-1');
       
       // Find username from the button in the flex wrapper, NOT from the reply mention
-      // The real username is in a button with text-left class, not in the group/reply button
+      // The real username is in a button with text-left class that's a direct child of the mb-1 flex div
+      // NOT inside a group/reply button
       let usernameEl = null;
       if (contentArea) {
-        // Look for the username button that's NOT inside a group/reply button
-        const usernameButtons = contentArea.querySelectorAll('button.text-left');
-        for (const btn of usernameButtons) {
-          // Skip if this button is inside a reply container - check by traversing up to find reply structure
-          let isReplyButton = false;
-          let parent = btn.parentElement;
-          while (parent && parent !== contentArea) {
-            if (parent.classList && parent.classList.contains('group/msg')) {
-              const replyBtn = parent.querySelector('button[aria-label="Reply"]');
-              if (replyBtn && replyBtn.contains(btn)) {
-                isReplyButton = true;
-                break;
+        // Look for the mb-1 flex container that holds the real username
+        // This is the div that contains the actual message author's name and timestamp
+        const messageHeaderDiv = contentArea.querySelector('div.mb-1.flex.flex-wrap.items-baseline');
+        
+        if (messageHeaderDiv) {
+          // The real username button is BEFORE the timestamp span in this container
+          const usernameButton = messageHeaderDiv.querySelector('button.text-left');
+          if (usernameButton) {
+            usernameEl = usernameButton.querySelector('span.truncate') || usernameButton.querySelector('span.inline-flex');
+          }
+        }
+        
+        // Fallback: if we couldn't find via the header div, search all text-left buttons
+        // but skip any that are inside group/reply or ARE group/reply
+        if (!usernameEl) {
+          const usernameButtons = contentArea.querySelectorAll('button.text-left');
+          for (const btn of usernameButtons) {
+            // Skip if this button IS a reply container or is inside one
+            let isReplyButton = btn.classList && (btn.classList.contains('group\\/reply') || btn.classList.contains('group/reply'));
+            
+            if (!isReplyButton) {
+              let parent = btn.parentElement;
+              while (parent && parent !== contentArea) {
+                if (parent.classList && (parent.classList.contains('group\\/reply') || parent.classList.contains('group/reply'))) {
+                  isReplyButton = true;
+                  break;
+                }
+                parent = parent.parentElement;
               }
             }
-            parent = parent.parentElement;
-          }
-          
-          if (!isReplyButton) {
-            usernameEl = btn.querySelector('span.truncate') || btn.querySelector('span.inline-flex');
-            break;
+            
+            if (!isReplyButton) {
+              usernameEl = btn.querySelector('span.truncate') || btn.querySelector('span.inline-flex');
+              if (usernameEl) break;
+            }
           }
         }
       }
@@ -117,7 +133,7 @@
         let isInsideReplyMention = false;
         let parent = contentEl.parentElement;
         while (parent && parent !== contentArea) {
-          if (parent.classList && parent.classList.contains('group/reply')) {
+          if (parent.classList && (parent.classList.contains('group\\/reply') || parent.classList.contains('group/reply'))) {
             isInsideReplyMention = true;
             break;
           }

@@ -1,4 +1,1 @@
-```
-node_modules/
-package-lock.json
-```
+Nothing should be ignored based on the provided file changes, as they only contain JavaScript source files (.js) which are not build artifacts, dependencies, or temporary files.

@@ -163,7 +163,7 @@ async function showUserSessions(username) {
         sessionId: session.sessionId
       });
       
-      if (sessionMsgs.success && sessionMsgs.messages) {
+      if (sessionMsgs.success && Array.isArray(sessionMsgs.messages)) {
         const userMsgs = sessionMsgs.messages.filter(m => m.author === username);
         userMsgs.forEach(m => {
           m._sessionId = session.sessionId; // Track which session
@@ -310,72 +310,73 @@ async function showSessionMessages(sessionId) {
       sessionId: sessionId 
     });
     
-    if (response.success) {
-      switchView('messages');
-      
-      const container = document.getElementById('message-container');
-      container.innerHTML = '';
+    if (!response.success) {
+      alert('Error loading messages: ' + (response.error || 'Unknown error'));
+      return;
+    }
+    
+    switchView('messages');
+    
+    const container = document.getElementById('message-container');
+    container.innerHTML = '';
 
-      const messages = response.messages || [];
+    const messages = Array.isArray(response.messages) ? response.messages : [];
+    
+    if (messages.length === 0) {
+      container.innerHTML = '<div class="empty-state">No messages in this session</div>';
+      return;
+    }
+
+    // Get user profiles for inline display
+    const profiles = await loadUserProfiles(messages.map(m => m.author).filter(Boolean));
+
+    messages.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'message-item';
       
-      if (messages.length === 0) {
-        container.innerHTML = '<div class="empty-state">No messages in this session</div>';
-        return;
+      let typeBadge = '';
+      if (msg.type === 'task') {
+        typeBadge = '<span class="message-type-badge badge-task">Task</span>';
+      } else if (msg.type === 'continuation') {
+        typeBadge = '<span class="message-type-badge badge-continuation">Continuation</span>';
       }
 
-      // Get user profiles for inline display
-      const profiles = await loadUserProfiles(messages.map(m => m.author).filter(Boolean));
+      const authorDisplay = msg.author || 'Unknown';
+      const profile = profiles[msg.author] || {};
+      const inlineInfo = [];
+      
+      if (profile.age) inlineInfo.push(profile.age);
+      if (profile.gender) inlineInfo.push(profile.gender);
+      
+      const inlineHtml = inlineInfo.length > 0 
+        ? `<span class="profile-field">${inlineInfo.join(' • ')}</span>` 
+        : '';
 
-      messages.forEach(msg => {
-        const div = document.createElement('div');
-        div.className = 'message-item';
-        
-        let typeBadge = '';
-        if (msg.type === 'task') {
-          typeBadge = '<span class="message-type-badge badge-task">Task</span>';
-        } else if (msg.type === 'continuation') {
-          typeBadge = '<span class="message-type-badge badge-continuation">Continuation</span>';
-        }
+      div.innerHTML = `
+        <div class="message-header">
+          <span class="message-author" data-username="${escapeHtml(authorDisplay)}">
+            ${escapeHtml(authorDisplay)}${inlineHtml}${typeBadge}
+          </span>
+          <span class="message-timestamp">${formatTimestamp(msg.timestamp)}</span>
+        </div>
+        <div class="message-content">${escapeHtml(msg.content || msg.body || '')}</div>
+      `;
 
-        const authorDisplay = msg.author || 'Unknown';
-        const profile = profiles[msg.author] || {};
-        const inlineInfo = [];
-        
-        if (profile.age) inlineInfo.push(profile.age);
-        if (profile.gender) inlineInfo.push(profile.gender);
-        
-        const inlineHtml = inlineInfo.length > 0 
-          ? `<span class="profile-field">${inlineInfo.join(' • ')}</span>` 
-          : '';
+      // Add click handler for username
+      const authorEl = div.querySelector('.message-author');
+      if (authorEl) {
+        authorEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const username = authorEl.getAttribute('data-username');
+          openUserProfile(username);
+        });
+      }
 
-        div.innerHTML = `
-          <div class="message-header">
-            <span class="message-author" data-username="${escapeHtml(authorDisplay)}">
-              ${escapeHtml(authorDisplay)}${inlineHtml}${typeBadge}
-            </span>
-            <span class="message-timestamp">${formatTimestamp(msg.timestamp)}</span>
-          </div>
-          <div class="message-content">${escapeHtml(msg.content || msg.body || '')}</div>
-        `;
-
-        // Add click handler for username
-        const authorEl = div.querySelector('.message-author');
-        if (authorEl) {
-          authorEl.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const username = authorEl.getAttribute('data-username');
-            openUserProfile(username);
-          });
-        }
-
-        container.appendChild(div);
-      });
-    } else {
-      alert('Error loading messages: ' + response.error);
-    }
+      container.appendChild(div);
+    });
   } catch (error) {
     console.error('Error loading session messages:', error);
-    alert('Error loading messages');
+    alert('Error loading messages: ' + error.message);
   }
 }
 

@@ -325,6 +325,19 @@
       const usernameEl = row.querySelector('span.truncate');
       const username = authorBadge ? authorBadge.textContent.trim() : (usernameEl ? usernameEl.textContent.trim() : '');
       
+      // Try to get @username from our lookup map if we have the display name
+      let atUsername = '';
+      if (username) {
+        const lookedUpUsername = usernameLookup.get(username);
+        if (lookedUpUsername) {
+          atUsername = lookedUpUsername;
+          console.log('[Chat Archiver] Found @username from lookup for task:', username, '->', '@' + atUsername);
+        }
+      }
+      
+      // Use @username as the unique identifier if available, otherwise fall back to display username
+      const uniqueAuthorId = atUsername || username;
+      
       // Find avatar
       const avatarImg = row.querySelector('img[alt=""]');
       const avatarInitialsDiv = row.querySelector('div.flex.h-8.w-8');
@@ -359,6 +372,8 @@
         id: row.getAttribute('data-message-id'),
         type: 'task',
         author: username,
+        authorId: uniqueAuthorId,  // Stable identifier that doesn't change with display name
+        atUsername: atUsername || null,  // The @username if found
         avatar: avatarUrl,
         title: title,
         content: content,
